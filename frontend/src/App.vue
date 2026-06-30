@@ -1,0 +1,22 @@
+<template>
+  <header><b>Android-UI-Scout</b><span>Device: {{ snapshot?.device?.serial || selectedSerial || 'N/A' }}</span><button @click="loadDevices">刷新设备</button><button @click="loadSnapshot">刷新页面</button></header>
+  <main>
+    <aside class="tree"><h3>元素树</h3><div v-for="node in tree" :key="node.node_id"><TreeNode :node="node" @select="selectNode" /></div></aside>
+    <section class="screen"><h3>手机截图</h3><button @click="loadSnapshot">刷新截图</button><div class="phone" ref="phoneRef" @click="selectByCoordinate"><img v-if="snapshot?.screenshot" :src="snapshot.screenshot" ref="imgRef"/><div v-if="highlight" class="box" :style="boxStyle"></div><p v-else-if="!snapshot">点击刷新页面获取截图</p></div><p v-if="coord">真实坐标: {{ coord.real_x }}, {{ coord.real_y }}</p></section>
+    <aside class="detail"><h3>元素详情</h3><template v-if="selected"><Row label="text" :value="selected.text"/><Row label="resource-id" :value="selected.resource_id"/><Row label="content-desc" :value="selected.content_desc"/><Row label="class" :value="selected.class_name"/><Row label="package" :value="selected.package"/><Row label="bounds" :value="JSON.stringify(selected.bounds)"/><Row label="clickable" :value="String(selected.clickable)"/><Row label="enabled" :value="String(selected.enabled)"/><Row label="selected" :value="String(selected.selected)"/><Row label="focused" :value="String(selected.focused)"/><Row label="scrollable" :value="String(selected.scrollable)"/><Row label="center" :value="`${selected.bounds?.center_x}, ${selected.bounds?.center_y}`"/><h3>代码</h3><Row label="推荐定位器" :value="code.recommended_locator"/><Row label="click" :value="code.click_code"/><Row label="XPath" :value="code.xpath"/><Row label="坐标点击" :value="code.coordinate_code"/></template><p v-else>请选择截图区域或元素树节点</p></aside>
+  </main>
+</template>
+<script setup>
+import { computed, defineComponent, h, onMounted, ref } from 'vue'
+const API='http://127.0.0.1:8787/api'; const devices=ref([]); const selectedSerial=ref(''); const snapshot=ref(null); const selected=ref(null); const code=ref({}); const coord=ref(null); const phoneRef=ref(null); const imgRef=ref(null)
+const tree=computed(()=>snapshot.value?.element_tree||[]); const highlight=computed(()=>selected.value?.bounds)
+const boxStyle=computed(()=>{const b=selected.value?.bounds, d=snapshot.value?.device, img=imgRef.value;if(!b||!d||!img)return{};const sx=img.clientWidth/d.screen_width, sy=img.clientHeight/d.screen_height;return{left:b.left*sx+'px',top:b.top*sy+'px',width:b.width*sx+'px',height:b.height*sy+'px'}})
+async function api(path,opt){const r=await fetch(API+path,opt); if(!r.ok) throw new Error(await r.text()); return r.json()}
+async function loadDevices(){const data=await api('/devices'); devices.value=data.devices; selectedSerial.value=devices.value.find(d=>d.available)?.serial||''}
+async function loadSnapshot(){snapshot.value=await api('/snapshot'+(selectedSerial.value?`?serial=${selectedSerial.value}`:'')); selected.value=null; coord.value=null}
+async function selectByCoordinate(e){if(!snapshot.value||!imgRef.value)return; const rect=imgRef.value.getBoundingClientRect(); const data=await api('/select-by-coordinate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x:e.clientX-rect.left,y:e.clientY-rect.top,display_width:rect.width,display_height:rect.height,screen_width:snapshot.value.device.screen_width,screen_height:snapshot.value.device.screen_height,serial:selectedSerial.value})}); selected.value=data.element; code.value=data.code; coord.value={real_x:data.real_x,real_y:data.real_y}}
+async function selectNode(node){const data=await api('/select-by-node',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node_id:node.node_id})}); selected.value=data.element; code.value=data.code}
+onMounted(loadDevices)
+const Row=defineComponent({props:['label','value'],setup:p=>()=>h('div',{class:'row'},[h('b',p.label),h('code',p.value||''),h('button',{onClick:()=>navigator.clipboard.writeText(p.value||'')},'复制')])})
+const TreeNode=defineComponent({name:'TreeNode',props:['node'],emits:['select'],setup(p,{emit}){return()=>h('div',{class:'node'},[h('div',{onClick:()=>emit('select',p.node)},`${p.node.class_name||'node'} ${p.node.text||''} ${p.node.resource_id||''}`),...(p.node.children||[]).map(c=>h(TreeNode,{node:c,onSelect:n=>emit('select',n)}))])}})
+</script>

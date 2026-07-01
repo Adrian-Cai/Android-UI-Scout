@@ -1,6 +1,7 @@
 """ADB discovery and device selection."""
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -50,7 +51,17 @@ def list_adb_devices() -> list[dict]:
 
 
 def get_default_device() -> dict:
+    requested_serial = os.environ.get("ANDROID_UI_SCOUT_SERIAL")
+    if requested_serial:
+        requested_serial = validate_serial(requested_serial)
     devices = list_adb_devices()
+    if requested_serial:
+        for device in devices:
+            if device["serial"] == requested_serial:
+                if device["status"] == "device":
+                    return device
+                raise RuntimeError(f"requested adb device {requested_serial} is not ready: {device['status']}")
+        raise RuntimeError(f"requested adb device {requested_serial} was not found")
     ready = [d for d in devices if d["status"] == "device"]
     if ready:
         return ready[0]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -35,9 +36,11 @@ def start(args: argparse.Namespace) -> int:
         print("No ready device found.", file=sys.stderr); return 1
     serial = args.serial or ready[0]["serial"]
     print(f"Using device: {serial}")
-    backend = subprocess.Popen([sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", str(port)])
+    backend_env = os.environ.copy()
+    backend_env["ANDROID_UI_SCOUT_SERIAL"] = serial
+    backend = subprocess.Popen([sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", str(port)], env=backend_env)
     frontend = _start_frontend(frontend_port)
-    url = f"http://127.0.0.1:{frontend_port}"
+    url = f"http://127.0.0.1:{frontend_port}?serial={serial}"
     time.sleep(1.5); webbrowser.open(url)
     print(f"Backend: http://127.0.0.1:{port}")
     print(f"Frontend: {url}")

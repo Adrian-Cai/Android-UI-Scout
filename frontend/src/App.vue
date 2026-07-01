@@ -8,11 +8,11 @@
 </template>
 <script setup>
 import { computed, defineComponent, h, onMounted, ref } from 'vue'
-const API='http://127.0.0.1:8787/api'; const devices=ref([]); const selectedSerial=ref(''); const snapshot=ref(null); const selected=ref(null); const code=ref({}); const coord=ref(null); const phoneRef=ref(null); const imgRef=ref(null)
+const API=import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8787/api'; const requestedSerial=new URLSearchParams(window.location.search).get('serial') || import.meta.env.VITE_ADB_SERIAL || ''; const devices=ref([]); const selectedSerial=ref(requestedSerial); const snapshot=ref(null); const selected=ref(null); const code=ref({}); const coord=ref(null); const phoneRef=ref(null); const imgRef=ref(null)
 const tree=computed(()=>snapshot.value?.element_tree||[]); const highlight=computed(()=>selected.value?.bounds)
 const boxStyle=computed(()=>{const b=selected.value?.bounds, d=snapshot.value?.device, img=imgRef.value;if(!b||!d||!img)return{};const sx=img.clientWidth/d.screen_width, sy=img.clientHeight/d.screen_height;return{left:b.left*sx+'px',top:b.top*sy+'px',width:b.width*sx+'px',height:b.height*sy+'px'}})
 async function api(path,opt){const r=await fetch(API+path,opt); if(!r.ok) throw new Error(await r.text()); return r.json()}
-async function loadDevices(){const data=await api('/devices'); devices.value=data.devices; selectedSerial.value=devices.value.find(d=>d.available)?.serial||''}
+async function loadDevices(){const data=await api('/devices'); devices.value=data.devices; const current=selectedSerial.value; const selected=devices.value.find(d=>d.available&&d.serial===current); selectedSerial.value=selected?.serial||devices.value.find(d=>d.available)?.serial||''}
 async function loadSnapshot(){snapshot.value=await api('/snapshot'+(selectedSerial.value?`?serial=${selectedSerial.value}`:'')); selected.value=null; coord.value=null}
 async function selectByCoordinate(e){if(!snapshot.value||!imgRef.value)return; const rect=imgRef.value.getBoundingClientRect(); const data=await api('/select-by-coordinate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x:e.clientX-rect.left,y:e.clientY-rect.top,display_width:rect.width,display_height:rect.height,screen_width:snapshot.value.device.screen_width,screen_height:snapshot.value.device.screen_height,serial:selectedSerial.value})}); selected.value=data.element; code.value=data.code; coord.value={real_x:data.real_x,real_y:data.real_y}}
 async function selectNode(node){const data=await api('/select-by-node',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node_id:node.node_id})}); selected.value=data.element; code.value=data.code}

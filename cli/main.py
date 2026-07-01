@@ -1,20 +1,22 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
 import webbrowser
 
-from backend.adb_manager import check_adb_available, list_adb_devices, validate_serial
+from backend.adb_manager import REQUESTED_SERIAL_ENV, check_adb_available, list_adb_devices, select_device, validate_serial
 from backend.security_guard import validate_host, validate_port
 
 
-def _start_frontend(port: int) -> subprocess.Popen | None:
+def _start_frontend(port: int, backend_port: int, serial: str) -> subprocess.Popen | None:
     if not __import__("shutil").which("npm"):
         print("npm not found; start frontend manually after installing Node.js")
         return None
-    return subprocess.Popen(["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", str(port)], cwd="frontend")
+    env = {**os.environ, "VITE_API_BASE": f"http://127.0.0.1:{backend_port}/api", "VITE_ADB_SERIAL": serial}
+    return subprocess.Popen(["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", str(port)], cwd="frontend", env=env)
 
 
 def start(args: argparse.Namespace) -> int:
@@ -33,11 +35,15 @@ def start(args: argparse.Namespace) -> int:
     ready = [d for d in devices if d["status"] == "device"]
     if not ready:
         print("No ready device found.", file=sys.stderr); return 1
-    serial = args.serial or ready[0]["serial"]
+    try:
+        serial = select_device(args.serial)["serial"]
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr); return 1
     print(f"Using device: {serial}")
-    backend = subprocess.Popen([sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", str(port)])
-    frontend = _start_frontend(frontend_port)
-    url = f"http://127.0.0.1:{frontend_port}"
+    env = {**os.environ, REQUESTED_SERIAL_ENV: serial}
+    backend = subprocess.Popen([sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", str(port)], env=env)
+    frontend = _start_frontend(frontend_port, port, serial)
+    url = f"http://127.0.0.1:{frontend_port}?serial={serial}"
     time.sleep(1.5); webbrowser.open(url)
     print(f"Backend: http://127.0.0.1:{port}")
     print(f"Frontend: {url}")
